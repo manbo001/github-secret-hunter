@@ -48,7 +48,7 @@ class Validator
     }
 
     /**
-     * GitHub Token 格式校验（ghp_、github_pat_、gho_、ghu_、ghs_、ghr_ 前缀，或 40 位 hex classic token）
+     * Token 格式校验（ghp_、github_pat_、gho_、ghu_、ghs_、ghr_ 前缀，或 40 位 hex classic token）
      */
     public static function githubToken(string $value): bool {
         $value = trim($value);

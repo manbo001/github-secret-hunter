@@ -39,6 +39,7 @@ CREATE TABLE `github_tokens` (
     `token_encrypted`  TEXT         NOT NULL COMMENT 'AES-256-GCM 认证加密密文',
     `token_hint`       VARCHAR(8)   NOT NULL COMMENT 'Token 后4位，用于显示',
     `last_used_at`     DATETIME     DEFAULT NULL,
+    `invalid_notified_at` DATETIME  DEFAULT NULL COMMENT '最近一次失效告警推送时间（6 小时冷却，防止重复轰炸）',
     `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_user_id` (`user_id`),

@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::requireLogin();
 
 $userId = Auth::id();
-$pageTitle = '搜索任务';
+$pageTitle = '任务管理';
 $activePage = 'tasks';
 
 $message = '';
@@ -33,6 +33,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             )->execute([$id, $userId]);
             $message = '已安排立即复查。';
             audit_log('task_recheck_requested', ['task_id' => $id], $userId);
+        } elseif ($action === 'retry' && $id > 0) {
+            // 重试失败任务：若绑定的令牌已被删除而同平台存在其他令牌，自动改绑到最新令牌
+            // （典型场景：唯一令牌被删导致任务失败，重新添加令牌后点重试）
+            $ts = db()->prepare('SELECT token_id, platform FROM search_tasks WHERE id = ? AND user_id = ? AND status = \'failed\'');
+            $ts->execute([$id, $userId]);
+            $task = $ts->fetch();
+            if (!$task) {
+                $message = '仅失败的任务可以重试。';
+                $msgType = 'error';
+            } else {
+                $tokenId = (int)$task['token_id'];
+                $chk = db()->prepare('SELECT id FROM github_tokens WHERE id = ? AND user_id = ?');
+                $chk->execute([$tokenId, $userId]);
+                if (!$chk->fetch()) {
+                    // 令牌悬空：尝试同平台最新令牌
+                    $rep = db()->prepare(
+                        'SELECT id FROM github_tokens WHERE user_id = ? AND platform = ? ORDER BY id DESC LIMIT 1'
+                    );
+                    $rep->execute([$userId, $task['platform']]);
+                    $r = $rep->fetch();
+                    $tokenId = $r ? (int)$r['id'] : 0;
+                }
+                if ($tokenId <= 0) {
+                    $message = '该平台的令牌已全部删除，请先到「令牌设置」添加令牌后再重试。';
+                    $msgType = 'error';
+                } else {
+                    $rt = db()->prepare(
+                        "UPDATE search_tasks
+                         SET status = 'pending', next_run_at = NOW(), retries = 0, error_msg = NULL, token_id = ?, paused = 0
+                         WHERE id = ? AND user_id = ? AND status = 'failed'"
+                    );
+                    $rt->execute([$tokenId, $id, $userId]);
+                    $message = '任务已重新排队，将自动继续抓取。';
+                    $msgType = 'success';
+                    audit_log('task_retry', ['task_id' => $id, 'token_id' => $tokenId], $userId);
+                }
+            }
         } elseif ($action === 'delete' && $id > 0) {
             db()->prepare('DELETE FROM search_tasks WHERE id = ? AND user_id = ?')->execute([$id, $userId]);
             $message = '任务及结果已删除。';
@@ -77,9 +114,9 @@ include __DIR__ . '/partials/header.php';
 <?php endif; ?>
 
 <div class="card">
-    <h3>搜索任务（共 <?= $total ?> 个）</h3>
+    <h3>任务（共 <?= $total ?> 个）</h3>
     <?php if (empty($tasks)): ?>
-        <p style="color:var(--text-2);font-size:14px;">暂无搜索任务</p>
+        <p style="color:var(--text-2);font-size:14px;">暂无任务</p>
     <?php else: ?>
         <form method="post" id="batchForm">
             <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
@@ -157,6 +194,14 @@ include __DIR__ . '/partials/header.php';
                                     <input type="hidden" name="action" value="recheck_now">
                                     <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
                                     <button type="submit" class="btn btn-success">立即复查</button>
+                                </form>
+                            <?php endif; ?>
+                            <?php if ($t['status'] === 'failed'): ?>
+                                <form method="post" style="display:inline">
+                                    <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
+                                    <input type="hidden" name="action" value="retry">
+                                    <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
+                                    <button type="submit" class="btn btn-success">重试</button>
                                 </form>
                             <?php endif; ?>
                             <a href="results.php?task_id=<?= (int)$t['id'] ?>" class="btn btn-secondary">查看结果</a>

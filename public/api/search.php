@@ -76,6 +76,6 @@ $task = $stmt->fetch() ?: [];
 json_response([
     'success' => true,
     'task_id' => $taskId,
-    'message' => '搜索任务已创建，后台将分页抓取全部命中结果。',
+    'message' => '任务已创建，后台将分页抓取全部命中结果。',
     'task' => $task,
 ]);

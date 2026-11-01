@@ -1,6 +1,6 @@
 <?php
 /**
- * 搜索结果导出 - 支持 CSV / Excel / JSON
+ * 任务结果导出 - 支持 CSV / Excel / JSON
  */
 require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::requireLogin();

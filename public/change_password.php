@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = Auth::changePassword($userId, $oldPassword, $newPassword, $mustChange);
             if ($result['success']) {
                 $success = '密码修改成功，正在跳转...';
-                // 跳转仪表盘
+                // 跳转总览
                 header('refresh: 2; url=dashboard.php');
             } else {
                 $error = $result['message'];
@@ -81,7 +81,7 @@ $csrf = Security::csrfToken();
             <button type="submit" class="btn btn-primary btn-block">确认修改</button>
             <?php if (!$mustChange): ?>
                 <div style="text-align:center;margin-top:14px;">
-                    <a href="dashboard.php">返回仪表盘</a>
+                    <a href="dashboard.php">返回总览</a>
                 </div>
             <?php endif; ?>
         </form>

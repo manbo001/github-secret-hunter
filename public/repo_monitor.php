@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!Validator::githubRepo($repo, $platform)) {
                     $message = '仓库格式不正确，应为 owner/name（GitCode 支持最多三层命名空间）。';
                 } elseif ($tokenId <= 0) {
-                    $message = '请选择用于查询的平台 Token。';
+                    $message = '请选择用于查询的令牌。';
                 } else {
                     $allowedIntervals = array_keys($intervalOptions);
                     if (!in_array($interval, $allowedIntervals, true)) {
@@ -172,7 +172,7 @@ include __DIR__ . '/partials/header.php';
 <div class="card">
     <h3>添加仓库监控</h3>
     <?php if (empty($tokens)): ?>
-        <div class="alert alert-error">请先在 <a href="tokens.php">GitHub Token</a> 页面添加至少一个 Token。</div>
+        <div class="alert alert-error">请先在 <a href="tokens.php">令牌设置</a> 页面添加至少一个 Token。</div>
     <?php else: ?>
         <form method="post">
             <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
@@ -295,19 +295,31 @@ include __DIR__ . '/partials/header.php';
                 </tr>
                 <?php if ($m['last_status'] === 'error' && $m['last_error']): ?>
                     <tr><td colspan="9" style="color:#dc2626;font-size:13px;">错误: <?= Security::e($m['last_error']) ?>
-                        <?php if (str_contains((string)$m['last_error'], 'Token 已被删除') && !empty($tokensByPlatform[$m['platform'] ?? ''])): ?>
+                        <?php $lastErr = (string)($m['last_error'] ?? '');
+                             $canRebind = str_contains($lastErr, '令牌已被删除')
+                                 || str_contains($lastErr, 'Token 无效')
+                                 || str_contains($lastErr, 'Token 解密失败');
+                             $platformTokens = array_values(array_filter(
+                                 $tokensByPlatform[$m['platform'] ?? ''] ?? [],
+                                 static fn(array $tk): bool => (int)$tk['id'] !== (int)$m['token_id']
+                             )); ?>
+                        <?php if ($canRebind && !empty($platformTokens)): ?>
                             — 可在下方直接换绑同平台的可用令牌：
                             <form method="post" style="display:inline">
                                 <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
                                 <input type="hidden" name="action" value="rebind">
                                 <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
                                 <select name="new_token_id" required>
-                                    <?php foreach ($tokensByPlatform[$m['platform']] as $tk): ?>
+                                    <?php foreach ($platformTokens as $tk): ?>
                                         <option value="<?= (int)$tk['id'] ?>"><?= Security::e($tk['label']) ?> (••••<?= Security::e($tk['token_hint']) ?>)</option>
                                     <?php endforeach; ?>
                                 </select>
                                 <button type="submit" class="btn btn-secondary" style="font-size:12px;">换绑令牌</button>
                             </form>
+                        <?php elseif ($canRebind): ?>
+                            — 当前平台下没有其他可用令牌，请先到 <a href="tokens.php">令牌设置</a> 页面添加一个
+                            <?= Security::e(PlatformSearch::label($m['platform'] ?? 'github')) ?> 令牌；
+                            添加后系统会自动恢复相关任务与监控（也可回到本页直接换绑）。
                         <?php endif; ?>
                     </td></tr>
                 <?php endif; ?>

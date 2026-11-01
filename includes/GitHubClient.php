@@ -40,7 +40,7 @@ class GitHubClient
     public function searchCode(string $query, int $perPage = 30, int $page = 1): array {
         $perPage = min($perPage, 100);
         $page = max(1, $page);
-        $fail = fn(string $err, int $retryAfter = 0) => ['total_count' => 0, 'items' => [], 'error' => $err, 'retry_after' => $retryAfter];
+        $fail = fn(string $err, int $retryAfter = 0, bool $authFailed = false) => ['total_count' => 0, 'items' => [], 'error' => $err, 'retry_after' => $retryAfter, 'auth_failed' => $authFailed];
 
         $url = $this->apiBase . '/search/code?' . http_build_query([
             'q' => $query,
@@ -124,7 +124,8 @@ class GitHubClient
         }
 
         if ($httpCode === 401) {
-            return $fail('GitHub Token 无效或无权限。');
+            // auth_failed：Token 失效（触发失效告警推送）
+            return $fail('Token 无效或无权限。', 0, true);
         }
 
         if ($httpCode !== 200) {
@@ -152,7 +153,7 @@ class GitHubClient
      */
     public function getRecentCommits(string $repo, int $limit = 10): array {
         $limit = max(1, min(100, $limit));
-        $fail = fn(string $err, int $retryAfter = 0) => ['commits' => [], 'error' => $err, 'retry_after' => $retryAfter];
+        $fail = fn(string $err, int $retryAfter = 0, bool $authFailed = false) => ['commits' => [], 'error' => $err, 'retry_after' => $retryAfter, 'auth_failed' => $authFailed];
 
         $url = $this->apiBase . '/repos/' . $repo . '/commits?per_page=' . $limit;
 
@@ -198,7 +199,8 @@ class GitHubClient
             return $fail('仓库不存在或 Token 无权限访问。');
         }
         if ($httpCode === 401) {
-            return $fail('GitHub Token 无效或无权限。');
+            // auth_failed：Token 失效（触发失效告警推送）
+            return $fail('Token 无效或无权限。', 0, true);
         }
         if ($httpCode !== 200) {
             return $fail("GitHub API 请求失败 (HTTP {$httpCode})。");
@@ -304,7 +306,7 @@ class GitHubClient
     }
 
     /**
-     * 预设的敏感信息搜索规则
+     * 预设的搜索规则
      */
     public static function presetQueries(): array {
         return [

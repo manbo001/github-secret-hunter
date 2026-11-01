@@ -9,6 +9,9 @@ $activePage = 'settings';
 $message = '';
 $msgType = 'success';
 
+// 当前磁盘分区列表：POST 保存校验与告警范围下拉都依赖，必须先于 POST 处理取好
+$serverDisks = ServerMetrics::snapshot()['disks'] ?? [];
+
 // 会话不活动超时可选项（分钟 => 标签；0 = 不自动登出）
 $sessionOptions = [
     30   => '30 分钟',
@@ -97,6 +100,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = '网站图标已删除，浏览器标签页将恢复默认图标。';
             $msgType = 'success';
             audit_log('site_favicon_deleted', [], $userId);
+        } elseif ($action === 'save_server_alert') {
+            // 服务器资源告警阈值（0 = 不告警）；每 5 分钟随请求检查一次，触发后 30 分钟冷却
+            $cpuT = (int)($_POST['alert_cpu'] ?? 0);
+            $memT = (int)($_POST['alert_mem'] ?? 0);
+            $diskT = (int)($_POST['alert_disk'] ?? 0);
+            foreach ([$cpuT, $memT, $diskT] as $v) {
+                if ($v < 0 || $v > 100) {
+                    $message = '阈值范围 0-100（0 = 不告警）。';
+                    $msgType = 'error';
+                    break;
+                }
+            }
+            // 磁盘监控范围：只能选当前存在的挂载点，空 = 全部分区
+            $diskMount = post_string('alert_disk_mount', 128);
+            if ($diskMount !== '') {
+                $validMounts = array_column($serverDisks, 'mount');
+                if (!in_array($diskMount, $validMounts, true)) {
+                    $diskMount = '';
+                }
+            }
+            if ($msgType !== 'error') {
+                Settings::set('alert_cpu', (string)$cpuT);
+                Settings::set('alert_mem', (string)$memT);
+                Settings::set('alert_disk', (string)$diskT);
+                Settings::set('alert_disk_mount', $diskMount);
+                $on = [];
+                if ($cpuT > 0) { $on[] = "CPU {$cpuT}%"; }
+                if ($memT > 0) { $on[] = "内存 {$memT}%"; }
+                if ($diskT > 0) { $on[] = '磁盘 ' . $diskT . '%' . ($diskMount !== '' ? "（仅 {$diskMount}）" : '（全部分区）'); }
+                $message = $on === [] ? '服务器告警已全部关闭。' : '服务器告警已启用：' . implode('，', $on) . '，达到阈值将推送到已启用的推送渠道。';
+                $msgType = 'success';
+                audit_log('server_alert_updated', ['cpu' => $cpuT, 'mem' => $memT, 'disk' => $diskT, 'disk_mount' => $diskMount], $userId);
+            }
         } elseif ($action === 'save_retention') {
             $days = (int)($_POST['retention_days'] ?? 90);
             $days = max(0, min(3650, $days));
@@ -223,6 +259,12 @@ $sessionSource = $dbSession !== '' ? '后台设置' : '.env 默认值';
 $siteTitleVal = Settings::get('site_title', '');
 $siteSubtitleVal = Settings::get('site_subtitle', '');
 $hasFavicon = site_has_favicon();
+
+// 服务器资源告警阈值（0 = 不告警）+ 磁盘监控范围（'' = 全部分区）
+$alertCpu = (int)Settings::get('alert_cpu', '0');
+$alertMem = (int)Settings::get('alert_mem', '0');
+$alertDisk = (int)Settings::get('alert_disk', '0');
+$alertDiskMount = Settings::get('alert_disk_mount', '');
 include __DIR__ . '/partials/header.php';
 ?>
 <?php if ($message): ?>
@@ -322,7 +364,7 @@ include __DIR__ . '/partials/header.php';
 <div class="card">
     <h3>GitHub 搜索配置</h3>
     <p style="color:var(--text-2);font-size:14px;margin-bottom:16px;">
-        命中片段（text-match）让搜索结果附带代码上下文片段，但会使单页响应体放大数倍。
+        命中片段（text-match）让任务结果附带代码上下文片段，但会使单页响应体放大数倍。
         若任务频繁报「transfer closed / Operation timed out」等传输错误，请关闭此开关（保存后立即生效，无需重启）。
     </p>
     <form method="post">
@@ -404,6 +446,40 @@ include __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card">
+    <h3>服务器告警</h3>
+    <!-- 说明文案按需求移除，保留占位行避免下方表单位置上移（与侧边栏副标题留空同一逻辑） -->
+    <p style="color:var(--text-2);font-size:14px;margin-bottom:16px;">&nbsp;</p>
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
+        <input type="hidden" name="action" value="save_server_alert">
+        <div class="form-row">
+            <div class="form-group">
+                <label>CPU 使用率阈值（%）</label>
+                <input type="number" name="alert_cpu" min="0" max="100" value="<?= $alertCpu ?>" placeholder="0 = 不告警">
+            </div>
+            <div class="form-group">
+                <label>内存使用率阈值（%）</label>
+                <input type="number" name="alert_mem" min="0" max="100" value="<?= $alertMem ?>" placeholder="0 = 不告警">
+            </div>
+            <div class="form-group">
+                <label>磁盘使用率阈值（%）</label>
+                <input type="number" name="alert_disk" min="0" max="100" value="<?= $alertDisk ?>" placeholder="0 = 不告警">
+            </div>
+            <div class="form-group">
+                <label>磁盘监控范围</label>
+                <select name="alert_disk_mount">
+                    <option value="" <?= $alertDiskMount === '' ? 'selected' : '' ?>>全部分区</option>
+                    <?php foreach ($serverDisks as $d): ?>
+                        <option value="<?= Security::e($d['mount']) ?>" <?= $alertDiskMount === $d['mount'] ? 'selected' : '' ?>>仅 <?= Security::e($d['mount']) ?>（当前 <?= $d['percent'] ?>%）</option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">保存告警配置</button>
+    </form>
+</div>
+
+<div class="card">
     <h3>自动清理状态</h3>
     <table>
         <tr><td>自动清理</td><td><span class="badge <?= $stats['retention_days'] > 0 ? 'badge-success' : 'badge-secondary' ?>"><?= Security::e($stats['auto_cleanup']) ?></span></td></tr>
@@ -427,8 +503,8 @@ include __DIR__ . '/partials/header.php';
 <div class="card">
     <h3>数据统计</h3>
     <table>
-        <tr><td>搜索任务总数</td><td><?= (int)$stats['total_tasks'] ?> 个</td></tr>
-        <tr><td>搜索结果总数</td><td><?= (int)$stats['total_results'] ?> 条</td></tr>
+        <tr><td>任务总数</td><td><?= (int)$stats['total_tasks'] ?> 个</td></tr>
+        <tr><td>任务结果总数</td><td><?= (int)$stats['total_results'] ?> 条</td></tr>
         <tr><td>已过期待清理任务</td><td><?= (int)$stats['expired_tasks'] ?> 个</td></tr>
     </table>
 </div>

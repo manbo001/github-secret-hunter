@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::requireLogin();
 
 $userId = Auth::id();
-$pageTitle = '敏感信息搜索';
+$pageTitle = '任务下发';
 $activePage = 'search';
 
 // 获取用户的 Token 列表（按平台分组展示）
@@ -22,7 +22,7 @@ include __DIR__ . '/partials/header.php';
 <div class="card">
     <h3>发起搜索</h3>
     <?php if (empty($tokens)): ?>
-        <div class="alert alert-error">请先在 <a href="tokens.php">GitHub Token</a> 页面添加至少一个 Token。</div>
+        <div class="alert alert-error">请先在 <a href="tokens.php">令牌设置</a> 页面添加至少一个 Token。</div>
     <?php else: ?>
         <form id="searchForm">
             <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
@@ -77,7 +77,7 @@ include __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card" id="resultCard" style="display:none">
-    <h3>搜索任务进度</h3>
+    <h3>任务进度</h3>
     <div id="resultInfo"></div>
 </div>
 

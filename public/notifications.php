@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::requireLogin();
 
 $userId = Auth::id();
-$pageTitle = '通知渠道';
+$pageTitle = '推送通知';
 $activePage = 'notifications';
 
 $message = '';
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             db()->prepare('INSERT INTO notification_channels (user_id, channel_type, name, config_encrypted, enabled) VALUES (?, ?, ?, ?, 1)')
                                 ->execute([$userId, $type, $name, $encrypted]);
                             audit_log('channel_created', ['type' => $type, 'name' => $name], $userId);
-                            $message = '通知渠道添加成功。';
+                            $message = '推送通知添加成功。';
                             $msgType = 'success';
                         } catch (Throwable $e) {
                             // 调试模式下显示具体错误，生产环境显示通用提示
@@ -220,7 +220,7 @@ include __DIR__ . '/partials/header.php';
 <?php endif; ?>
 
 <div class="card">
-    <h3>添加通知渠道</h3>
+    <h3>添加推送通知</h3>
     <form method="post" id="channelForm">
         <input type="hidden" name="csrf_token" value="<?= Security::e($csrf) ?>">
         <input type="hidden" name="action" value="create">
@@ -320,7 +320,7 @@ include __DIR__ . '/partials/header.php';
 <div class="card">
     <h3>已配置渠道</h3>
     <?php if (empty($channels)): ?>
-        <p style="color:var(--text-2);font-size:14px;">暂无通知渠道</p>
+        <p style="color:var(--text-2);font-size:14px;">暂无推送通知</p>
     <?php else: ?>
         <div class="table-scroll">
         <table>

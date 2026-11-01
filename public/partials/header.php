@@ -21,7 +21,7 @@ $user = Auth::user();
     <script>(function(){try{var t=localStorage.getItem('sm-theme');if(!t){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
     <title><?= Security::e($pageTitle) ?> - <?= Security::e($siteTitle) ?></title>
     <link rel="icon" href="favicon.php?v=<?= Security::e($faviconVer) ?>">
-    <link rel="stylesheet" href="assets/css/style.css?v=20261106">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261112">
 </head>
 <body>
 <div class="layout">
@@ -34,13 +34,13 @@ $user = Auth::user();
         <div class="logo-sub">&nbsp;</div>
         <?php endif; ?>
         <nav>
-            <a href="dashboard.php" class="<?= $activePage === 'dashboard' ? 'active' : '' ?>">仪表盘</a>
-            <a href="search.php" class="<?= $activePage === 'search' ? 'active' : '' ?>">敏感信息搜索</a>
-            <a href="tasks.php" class="<?= $activePage === 'tasks' ? 'active' : '' ?>">搜索任务</a>
-            <a href="results.php" class="<?= $activePage === 'results' ? 'active' : '' ?>">搜索结果</a>
+            <a href="dashboard.php" class="<?= $activePage === 'dashboard' ? 'active' : '' ?>">总览</a>
+            <a href="search.php" class="<?= $activePage === 'search' ? 'active' : '' ?>">任务下发</a>
+            <a href="tasks.php" class="<?= $activePage === 'tasks' ? 'active' : '' ?>">任务管理</a>
+            <a href="results.php" class="<?= $activePage === 'results' ? 'active' : '' ?>">任务结果</a>
             <a href="repo_monitor.php" class="<?= $activePage === 'repo_monitor' ? 'active' : '' ?>">仓库监控</a>
-            <a href="tokens.php" class="<?= $activePage === 'tokens' ? 'active' : '' ?>">平台 Token</a>
-            <a href="notifications.php" class="<?= $activePage === 'notifications' ? 'active' : '' ?>">通知渠道</a>
+            <a href="tokens.php" class="<?= $activePage === 'tokens' ? 'active' : '' ?>">令牌设置</a>
+            <a href="notifications.php" class="<?= $activePage === 'notifications' ? 'active' : '' ?>">推送通知</a>
             <a href="settings.php" class="<?= $activePage === 'settings' ? 'active' : '' ?>">系统设置</a>
         </nav>
     </aside>

@@ -57,7 +57,7 @@ class RepoMonitorWorker
         $stmt->execute([$monitor['token_id'], $monitor['user_id']]);
         $tokenRow = $stmt->fetch();
         if (!$tokenRow) {
-            db()->prepare("UPDATE repo_monitors SET last_status = 'error', last_error = '绑定的 GitHub Token 已被删除。', next_check_at = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?")
+            db()->prepare("UPDATE repo_monitors SET last_status = 'error', last_error = '绑定的令牌已被删除。', next_check_at = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?")
                 ->execute([(int)$monitor['check_interval_minutes'], $monitorId]);
             return;
         }
@@ -80,6 +80,10 @@ class RepoMonitorWorker
 
         // ---- 失败处理 ----
         if ($result['error']) {
+            // Token 失效（401）：按冷却策略推送告警（固定模板）
+            if (!empty($result['auth_failed'])) {
+                Notifier::notifyTokenInvalid((int)$monitor['token_id'], (int)$monitor['user_id'], (string)($monitor['platform'] ?? 'github'), '仓库监控检查');
+            }
             $retryAfter = (int)($result['retry_after'] ?? 0);
             if ($retryAfter > 0) {
                 $wait = max($retryAfter, 60);

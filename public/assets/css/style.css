@@ -453,6 +453,74 @@ pre.snippet {
     margin-top: 6px;
 }
 
+/* ---- 服务器状态区块（仪表盘） ---- */
+.srv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+@media (max-width: 720px) {
+    .srv-grid { grid-template-columns: 1fr; }
+}
+.srv-tile {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+}
+.srv-tile-wide { grid-column: 1 / -1; }
+.srv-tile-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+.srv-tile-title { font-size: 13px; font-weight: 600; }
+.srv-tile-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* 服务器状态磁贴里的进度条：轨道底色须与磁贴背景区分开，
+   否则 100% 范围不可见，短进度条看起来像没对齐的悬浮块 */
+.srv-tile .hbar-track {
+    background: var(--border);
+}
+.srv-track { height: 8px; }
+.srv-tile-sub { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+/* 磁盘行用 Grid + max-content 列：名称列宽自动适配最长的分区名，
+   所有行的进度条起点对齐，间距保持紧凑 */
+#srvDisks {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    column-gap: 12px;
+    row-gap: 8px;
+    align-items: center;
+}
+.srv-disk-row { display: contents; }
+.srv-disk-mount {
+    font-size: 13px;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+}
+.srv-disk-meta {
+    width: 220px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.srv-net-chips { display: flex; gap: 10px; flex-wrap: wrap; }
+.srv-chip {
+    background: var(--code-bg);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 13px;
+    color: var(--text-2);
+}
+.srv-chip strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
 /* ---- 仓库监控：按仓库分组的更新列表 ---- */
 .upd-group {
     border: 1px solid var(--border);

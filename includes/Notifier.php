@@ -38,6 +38,103 @@ class Notifier
     }
 
     /**
+     * 向用户所有启用渠道推送通知并记录日志
+     * @param string $kind 模板类别：search=搜索命中告警（默认）；repo=仓库监控更新；raw=系统告警固定格式
+     * @return int 成功送达的渠道数（调用方可据此决定是否写入冷却标记）
+     */
+    public static function pushToAllChannels(int $userId, string $title, string $message, array $data = [], string $kind = 'search'): int {
+        $sent = 0;
+        try {
+            $stmt = db()->prepare('SELECT * FROM notification_channels WHERE user_id = ? AND enabled = 1');
+            $stmt->execute([$userId]);
+            $channels = $stmt->fetchAll();
+            if (empty($channels)) {
+                return 0;
+            }
+            foreach ($channels as $ch) {
+                try {
+                    $config = json_decode(Crypto::decrypt($ch['config_encrypted']), true);
+                    $res = self::send(
+                        $ch['channel_type'],
+                        $config,
+                        $title,
+                        $message,
+                        $data,
+                        $kind
+                    );
+                    db()->prepare('INSERT INTO notification_logs (channel_id, result_id, status, response) VALUES (?, NULL, ?, ?)')
+                        ->execute([$ch['id'], $res['success'] ? 'success' : 'failed', $res['response']]);
+                    if ($res['success']) {
+                        $sent++;
+                    }
+                } catch (Throwable $e) {
+                    // 单个渠道失败不影响其他，但保留痕迹便于排查
+                    error_log('Notifier channel ' . $ch['id'] . ' failed: ' . $e->getMessage());
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Notifier::pushToAllChannels failed: ' . $e->getMessage());
+        }
+        return $sent;
+    }
+
+    /**
+     * Token 失效告警（固定模板，不支持自定义；同一令牌 6 小时内只推送一次）
+     * 由搜索任务 / 仓库监控在收到 401（auth_failed）时触发。
+     * 冷却标记用 CAS 写入（WHERE 校验旧时间戳），并发 401 不会重复推送；
+     * 标记在成功送达后写入，渠道全失败时下轮 401 仍会重试。
+     */
+    public static function notifyTokenInvalid(int $tokenId, int $userId, string $platform, string $context = ''): void {
+        try {
+            // 无任何启用渠道时直接返回：推送不可能成功，避免占用/释放冷却窗口的无谓循环
+            $chk = db()->prepare('SELECT COUNT(*) FROM notification_channels WHERE user_id = ? AND enabled = 1');
+            $chk->execute([$userId]);
+            if ((int)$chk->fetchColumn() === 0) {
+                return;
+            }
+            $st = db()->prepare('SELECT label, token_hint FROM github_tokens WHERE id = ?');
+            $st->execute([$tokenId]);
+            $row = $st->fetch();
+            if (!$row) {
+                return;
+            }
+            // 原子冷却认领：仅当 6 小时内未推送过时才能占用窗口（并发只有一个能成功）
+            $claim = db()->prepare(
+                'UPDATE github_tokens SET invalid_notified_at = NOW()
+                 WHERE id = ? AND (invalid_notified_at IS NULL OR invalid_notified_at < DATE_SUB(NOW(), INTERVAL 6 HOUR))'
+            );
+            $claim->execute([$tokenId]);
+            if ($claim->rowCount() !== 1) {
+                return; // 冷却期内，已被其他请求推送
+            }
+
+            $title = PlatformSearch::label($platform) . ' Token 失效告警';
+            $now = date('Y-m-d H:i:s');
+            $message = "平台：{$title}\n"
+                . "令牌：{$row['label']}（••••{$row['token_hint']}）\n"
+                . "状态：Token 已失效或无权限（API 返回 401）\n"
+                . "发现场景：{$context}\n"
+                . "影响：使用该令牌的搜索任务与仓库监控将无法执行\n"
+                . "处理：请到「令牌设置」页更换有效令牌；仓库监控可在监控列表中直接换绑\n"
+                . "时间：{$now}";
+
+            $sent = self::pushToAllChannels($userId, $title, $message, [
+                'title' => $title,
+                'time'  => $now,
+            ], 'raw');
+            if ($sent === 0) {
+                // 全部渠道失败：释放冷却窗口，下一轮 401 可重试推送；失败本身留痕在 PHP 错误日志
+                db()->prepare('UPDATE github_tokens SET invalid_notified_at = NULL WHERE id = ?')
+                    ->execute([$tokenId]);
+                return;
+            }
+            audit_log('token_invalid_notified', ['token_id' => $tokenId, 'platform' => $platform, 'context' => $context, 'sent' => $sent], $userId);
+        } catch (Throwable $e) {
+            error_log('Notifier::notifyTokenInvalid failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * 发送通知
      * @param string $kind 模板类别：search=搜索命中告警（默认）；repo=仓库监控更新
      *              repo 类别的模板回退顺序：渠道 template_repo → 渠道 template → DEFAULT_TEMPLATE_REPO
@@ -51,22 +148,27 @@ class Notifier
         // 模板选择
         $searchTpl = trim((string)($config['template'] ?? ''));
         $template = $searchTpl;
-        if ($kind === 'repo') {
-            $repoTpl = trim((string)($config['template_repo'] ?? ''));
-            if ($repoTpl !== '') {
-                $template = $repoTpl;
-            } elseif ($searchTpl === '') {
-                $template = self::DEFAULT_TEMPLATE_REPO;
+        if ($kind === 'raw') {
+            // 系统级告警（Token 失效 / 服务器资源告警）：固定格式，不使用用户自定义模板
+            $rendered = "### {$title}\n\n{$message}";
+        } else {
+            if ($kind === 'repo') {
+                $repoTpl = trim((string)($config['template_repo'] ?? ''));
+                if ($repoTpl !== '') {
+                    $template = $repoTpl;
+                } elseif ($searchTpl === '') {
+                    $template = self::DEFAULT_TEMPLATE_REPO;
+                }
             }
+            $renderData = array_merge([
+                'title'   => $title,
+                'content' => $message,
+                'query'   => '',
+                'count'   => 0,
+                'time'    => date('Y-m-d H:i:s'),
+            ], $data);
+            $rendered = self::renderTemplate($template, $renderData);
         }
-        $renderData = array_merge([
-            'title'   => $title,
-            'content' => $message,
-            'query'   => '',
-            'count'   => 0,
-            'time'    => date('Y-m-d H:i:s'),
-        ], $data);
-        $rendered = self::renderTemplate($template, $renderData);
 
         return match ($channelType) {
             'dingtalk' => self::sendDingTalk($config, $title, $rendered),

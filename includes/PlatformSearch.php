@@ -69,7 +69,7 @@ class PlatformSearch
      * 需将 owner 部分 URL 编码并以 PATH_AS_IS 发送，否则路由 404
      */
     private static function v5RecentCommits(string $base, string $token, string $repo, int $limit, string $platform): array {
-        $fail = fn(string $err, int $retryAfter = 0) => ['commits' => [], 'error' => $err, 'retry_after' => $retryAfter];
+        $fail = fn(string $err, int $retryAfter = 0, bool $authFailed = false) => ['commits' => [], 'error' => $err, 'retry_after' => $retryAfter, 'auth_failed' => $authFailed];
 
         $repoPath = $repo;
         if ($platform === 'gitcode' && str_contains($repo, '/')) {
@@ -95,7 +95,7 @@ class PlatformSearch
 
         $resp = self::httpGet($url, $base, $extraHeaders, true);
         if ($resp['error'] !== null) {
-            return $fail($resp['error'], $resp['retry_after']);
+            return $fail($resp['error'], $resp['retry_after'], (bool)($resp['auth_failed'] ?? false));
         }
 
         $data = json_decode($resp['body'], true);
@@ -122,7 +122,7 @@ class PlatformSearch
      * 鉴权差异：gitee 用 access_token 查询参数；gitcode 用 PRIVATE-TOKEN 请求头
      */
     private static function v5Search(string $base, string $token, string $query, int $perPage, int $page, string $platform): array {
-        $fail = fn(string $err, int $retryAfter = 0) => ['total_count' => 0, 'items' => [], 'error' => $err, 'retry_after' => $retryAfter];
+        $fail = fn(string $err, int $retryAfter = 0, bool $authFailed = false) => ['total_count' => 0, 'items' => [], 'error' => $err, 'retry_after' => $retryAfter, 'auth_failed' => $authFailed];
 
         $url = $base . '/search/repositories?' . http_build_query([
             'q'        => $query,
@@ -144,7 +144,7 @@ class PlatformSearch
 
         $resp = self::httpGet($url, $base, $extraHeaders);
         if ($resp['error'] !== null) {
-            return $fail($resp['error'], $resp['retry_after']);
+            return $fail($resp['error'], $resp['retry_after'], (bool)($resp['auth_failed'] ?? false));
         }
 
         $data = json_decode($resp['body'], true);
@@ -227,7 +227,8 @@ class PlatformSearch
         }
 
         if ($httpCode === 401) {
-            return ['error' => 'Token 无效或无权限。', 'retry_after' => 0, 'body' => $body, 'headers' => $headers];
+            // auth_failed：Token 失效（触发失效告警推送），与普通错误区分
+            return ['error' => 'Token 无效或无权限。', 'retry_after' => 0, 'body' => $body, 'headers' => $headers, 'auth_failed' => true];
         }
         if ($httpCode === 404) {
             return ['error' => '仓库不存在或无权限访问。', 'retry_after' => 0, 'body' => $body, 'headers' => $headers];

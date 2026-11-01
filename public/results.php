@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 Auth::requireLogin();
 
 $userId = Auth::id();
-$pageTitle = '搜索结果';
+$pageTitle = '任务结果';
 $activePage = 'results';
 // 结果页禁用缓存：平台/任务筛选切换不允许命中浏览器缓存
 header('Cache-Control: no-store, max-age=0');
@@ -160,7 +160,7 @@ function setFilter(key, val) {
     <?php if ($error): ?>
         <div class="alert alert-error"><?= Security::e($error) ?></div>
     <?php elseif (empty($results)): ?>
-        <p style="color:var(--text-2);font-size:14px;">暂无搜索结果</p>
+        <p style="color:var(--text-2);font-size:14px;">暂无任务结果</p>
     <?php else: ?>
         <div class="table-scroll">
         <table>

@@ -8,7 +8,7 @@ declare(strict_types=1);
  * - bootstrap 每次请求调用 runIfDue()，每次最多处理一个任务的"一页"搜索
  * - 翻页请求之间按 GITHUB_SEARCH_INTERVAL 秒间隔调度，遵守平台速率限制
  * - 被限流（403/429）时按平台返回的 Retry-After / Reset 时间自动退避
- * - GitHub 令牌池：同一用户有多个 GitHub Token 时按"最久未用"轮转（负载均衡，
+ * - GitHub 令牌池：同一用户有多个 Token 时按"最久未用"轮转（负载均衡，
  *   等效叠加每 Token 30 次/分的搜索配额，翻页更快）；限流配额也按 Token 隔离
  * - 大查询拆分：GitHub 代码搜索单查询只暴露前 1000 条（page*per_page>1000 返回 422），
  *   Gitee 同样存在 page*per_page<=1000 的隐性上限。命中数超过 1000 时自动按
@@ -120,7 +120,7 @@ class TaskWorker
         // ---- 令牌选择：GitHub 多令牌 LRU 轮转（负载均衡）；其他平台用绑定令牌 ----
         $picked = self::pickToken($task, $platform);
         if ($picked === null) {
-            db()->prepare("UPDATE search_tasks SET status = 'failed', error_msg = '没有可用的平台 Token（已被删除或解密失败）。', next_run_at = NULL WHERE id = ?")
+            db()->prepare("UPDATE search_tasks SET status = 'failed', error_msg = '没有可用的令牌（已被删除或解密失败）。', next_run_at = NULL WHERE id = ?")
                 ->execute([$taskId]);
             return;
         }
@@ -146,6 +146,10 @@ class TaskWorker
 
         // ---- 失败处理：限流退避 vs 普通错误重试 ----
         if ($result['error']) {
+            // Token 失效（401）：按冷却策略推送告警（固定模板，不支持自定义）
+            if (!empty($result['auth_failed'])) {
+                Notifier::notifyTokenInvalid($tokenId, (int)$task['user_id'], $platform, '搜索任务抓取');
+            }
             $retryAfter = (int)($result['retry_after'] ?? 0);
             if ($retryAfter > 0) {
                 // 被平台限流：按官方建议时间退避，不计入失败次数，原地重试当前页
