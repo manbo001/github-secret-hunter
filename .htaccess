@@ -1,0 +1,2 @@
+# 根目录禁止 Web 访问（所有请求应指向 public/）
+Require all denied

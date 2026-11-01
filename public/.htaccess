@@ -1,0 +1,29 @@
+# ============================================
+# Apache 安全配置
+# ============================================
+
+# 关闭目录列表
+Options -Indexes
+
+# 禁止访问敏感文件
+<FilesMatch "(^\.env|\.env\.example|\.sql|\.md|\.log|\.git|composer\.(json|lock))$">
+    Require all denied
+</FilesMatch>
+
+# 隐藏 includes 和 config 目录（public 外的目录本身不应被访问，此处双重保险）
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(includes|config|sql)/ - [F,L]
+</IfModule>
+
+# 安全响应头
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+    Header unset X-Powered-By
+    Header unset Server
+</IfModule>
